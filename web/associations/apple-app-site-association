@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.com.your-domain.your-app",
+        "paths": [ "your-paths", "your-paths" ]
+      {
+        "appID": "TEAM_ID.com.thelearmondcorporation.source",
+        "paths": [ "/source/pay", "/source/pay/*" ]
+      }

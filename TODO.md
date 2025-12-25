@@ -1,0 +1,2 @@
+1. Refine qr code scan to open installed app or web.
+2. When web opens, it should open a modal bottom sheet that allows the user to login into the source platform. When the user logs in, it should show the paysheet with the transaction info and the pay button that calls the source_pay_api.
