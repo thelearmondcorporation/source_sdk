@@ -10,10 +10,7 @@ class ExampleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Source SDK Example',
-      home: const ExamplePage(),
-    );
+    return MaterialApp(title: 'Source SDK Example', home: const ExamplePage());
   }
 }
 
@@ -37,7 +34,13 @@ class _ExamplePageState extends State<ExamplePage> {
     final tx = TransactionInfo(
       accountId: 'acct_demo_123',
       lineItems: [
-        LineItem(id: 'sku-1', name: 'T-Shirt', quantity: 1, unitAmount: 1000, currency: 'USD'),
+        LineItem(
+          id: 'sku-1',
+          name: 'T-Shirt',
+          quantity: 1,
+          unitAmount: 1000,
+          currency: 'USD',
+        ),
       ],
       amount: 1250,
       currency: 'USD',
@@ -57,7 +60,11 @@ class _ExamplePageState extends State<ExamplePage> {
           children: [
             // Embed the QR produced by the SDK. Pass `encryptionKey` so the example
             // can reproduce and decode the payload deterministically.
-            Source.instance.present(transaction: tx, encryptionKey: demoKey, sdkConfig: sdkConfig),
+            Source.instance.present(
+              transaction: tx,
+              encryptionKey: demoKey,
+              sdkConfig: sdkConfig,
+            ),
             const SizedBox(height: 16),
           ],
         ),

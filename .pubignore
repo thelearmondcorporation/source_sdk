@@ -34,3 +34,6 @@ web/
 *.log
 
 TODO.md
+
+publishsdk.sh
+

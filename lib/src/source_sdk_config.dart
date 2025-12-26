@@ -11,7 +11,7 @@ class SourceSDKConfig {
 
   /// Optional merchant wallet identifier (if different from accountId).
   final String? merchantWallet;
-  
+
   /// Optional web base URL to use for the QR fallback link (overrides SDK defaults).
   final String? webBaseUrl;
 

@@ -46,22 +46,22 @@ class LineItem {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'quantity': quantity,
-        'unitAmount': unitAmount,
-        if (currency != null) 'currency': currency,
-        'metadata': metadata ?? {},
-      };
+    'id': id,
+    'name': name,
+    'quantity': quantity,
+    'unitAmount': unitAmount,
+    if (currency != null) 'currency': currency,
+    'metadata': metadata ?? {},
+  };
 
   static LineItem fromJson(Map<String, dynamic> j) => LineItem(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        quantity: j['quantity'] as int,
-        unitAmount: j['unitAmount'] as int,
-        currency: j['currency'] as String?,
-        metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    quantity: j['quantity'] as int,
+    unitAmount: j['unitAmount'] as int,
+    currency: j['currency'] as String?,
+    metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
+  );
 }
 
 class TransactionInfo {
@@ -84,24 +84,27 @@ class TransactionInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        'accountId': accountId,
-        if (merchantWallet != null) 'merchantWallet': merchantWallet,
-        if (lineItems != null) 'lineItems': lineItems!.map((e) => e.toJson()).toList(),
-        'amount': amount,
-        'currency': currency,
-        'reference': reference,
-        'metadata': metadata ?? {},
-      };
+    'accountId': accountId,
+    if (merchantWallet != null) 'merchantWallet': merchantWallet,
+    if (lineItems != null)
+      'lineItems': lineItems!.map((e) => e.toJson()).toList(),
+    'amount': amount,
+    'currency': currency,
+    'reference': reference,
+    'metadata': metadata ?? {},
+  };
 
-    static TransactionInfo fromJson(Map<String, dynamic> j) => TransactionInfo(
-      accountId: j['accountId'] as String,
-        merchantWallet: j['merchantWallet'] as String?,
-        lineItems: (j['lineItems'] as List?)?.map((e) => LineItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
-        amount: j['amount'] as int,
-        currency: j['currency'] as String,
-      reference: j['reference'] as String,
-        metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
-      );
+  static TransactionInfo fromJson(Map<String, dynamic> j) => TransactionInfo(
+    accountId: j['accountId'] as String,
+    merchantWallet: j['merchantWallet'] as String?,
+    lineItems: (j['lineItems'] as List?)
+        ?.map((e) => LineItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList(),
+    amount: j['amount'] as int,
+    currency: j['currency'] as String,
+    reference: j['reference'] as String,
+    metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
+  );
 }
 
 /// The Source SDK singleton.
@@ -119,12 +122,15 @@ class Source {
   Widget present({
     required TransactionInfo transaction,
     String? encryptionKey,
+
     /// Optional SDK config: if provided, the SDK will be configured with these
     /// values before rendering the QR. This lets merchants call `present()`
     /// once to both configure the SDK and render the QR.
     SourceSDKConfig? sdkConfig,
+
     /// App custom scheme prefix (used when attempting to open the app directly)
     String appSchemePrefix = 'source://pay?payload=',
+
     /// Optional web base URL (used as the QR content so scanners open the web page if the app is not installed)
     /// If omitted the SDK will choose a sensible default depending on platform
     /// and environment (dev vs production). Use `SourceSDKConfig.webBaseUrl`
@@ -150,10 +156,12 @@ class Source {
               reference: transaction.reference,
               metadata: transaction.metadata,
             );
-      final resolvedMerchantWallet = cfg?.merchantWallet ?? txForPayload.merchantWallet;
+      final resolvedMerchantWallet =
+          cfg?.merchantWallet ?? txForPayload.merchantWallet;
       final merchantInfo = {
         'accountId': cfg?.accountId ?? txForPayload.accountId,
-        if (resolvedMerchantWallet != null) 'merchantWallet': resolvedMerchantWallet,
+        if (resolvedMerchantWallet != null)
+          'merchantWallet': resolvedMerchantWallet,
         'merchantName': cfg?.merchantName,
       };
 
@@ -162,51 +170,62 @@ class Source {
         'merchant': merchantInfo,
       };
 
-          final payload = jsonEncode(payloadMap);
-          final encrypted = _encryptPayload(payload, key);
-          final encoded = base64UrlEncode(encrypted);
-          final encodedParam = Uri.encodeComponent(encoded);
+      final payload = jsonEncode(payloadMap);
+      final encrypted = _encryptPayload(payload, key);
+      final encoded = base64UrlEncode(encrypted);
+      final encodedParam = Uri.encodeComponent(encoded);
 
-          // Resolve web base: precedence is parameter -> SDK config -> auto default
-          final resolvedBase = webBase ?? SourceSDKConfig.current?.webBaseUrl ?? resolveDefaultWebBase();
+      // Resolve web base: precedence is parameter -> SDK config -> auto default
+      final resolvedBase =
+          webBase ??
+          SourceSDKConfig.current?.webBaseUrl ??
+          resolveDefaultWebBase();
 
-          // Build web URL: append the payload as a proper query parameter.
-          final webUri = resolvedBase.contains('?') ? '$resolvedBase&payload=$encodedParam' : '$resolvedBase?payload=$encodedParam';
+      // Build web URL: append the payload as a proper query parameter.
+      final webUri = resolvedBase.contains('?')
+          ? '$resolvedBase&payload=$encodedParam'
+          : '$resolvedBase?payload=$encodedParam';
 
-          // The app URI uses the custom scheme — encode the payload component.
-          final appUri = '$appSchemePrefix${Uri.encodeComponent(encoded)}';
+      // The app URI uses the custom scheme — encode the payload component.
+      final appUri = '$appSchemePrefix${Uri.encodeComponent(encoded)}';
 
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          QrImageView(
-            data: webUri,
-            size: qrSize,
-          ),
+          QrImageView(data: webUri, size: qrSize),
           const SizedBox(height: 12),
           // Hide the raw payload by default. Provide a small action to copy the link instead.
-          Builder(builder: (ctx) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton.icon(
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(ctx);
-                    await Clipboard.setData(ClipboardData(text: webUri));
-                    messenger.showSnackBar(const SnackBar(content: Text('Link copied')));
-                  },
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy link'),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
+          Builder(
+            builder: (ctx) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
                     onPressed: () async {
-                      await _openAppOrWeb(Uri.parse(appUri), Uri.parse(webUri), ctx);
+                      final messenger = ScaffoldMessenger.of(ctx);
+                      await Clipboard.setData(ClipboardData(text: webUri));
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Link copied')),
+                      );
                     },
-                    child: const Text('Open in Source app')),
-              ],
-            );
-          }),
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy link'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () async {
+                      await _openAppOrWeb(
+                        Uri.parse(appUri),
+                        Uri.parse(webUri),
+                        ctx,
+                      );
+                    },
+                    child: const Text('Open in Source app'),
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       );
     }
@@ -220,7 +239,11 @@ class Source {
       future: _getOrCreateEncryptionKey(),
       builder: (ctx, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(width: 220, height: 220, child: Center(child: CircularProgressIndicator()));
+          return const SizedBox(
+            width: 220,
+            height: 220,
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snap.hasError || snap.data == null) {
           return const Text('Failed to obtain encryption key');
@@ -252,7 +275,9 @@ class Source {
     final utf = utf8.encode(key);
     if (utf.length == 32) return Uint8List.fromList(utf);
 
-    throw ArgumentError('encryptionKey must be 32 raw chars, 64-hex, or base64-encoded 32 bytes');
+    throw ArgumentError(
+      'encryptionKey must be 32 raw chars, 64-hex, or base64-encoded 32 bytes',
+    );
   }
 
   /// Encrypts JSON payload with AES-256-CBC and returns bytes = iv + ciphertext.
@@ -260,7 +285,9 @@ class Source {
     final keyBytes = _normalizeKey(encryptionKey);
     final key = encrypt_pkg.Key(keyBytes);
     final iv = encrypt_pkg.IV.fromSecureRandom(16);
-    final encrypter = encrypt_pkg.Encrypter(encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc));
+    final encrypter = encrypt_pkg.Encrypter(
+      encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc),
+    );
     final encrypted = encrypter.encrypt(jsonPayload, iv: iv);
     final out = <int>[];
     out.addAll(iv.bytes);
@@ -304,7 +331,9 @@ class Source {
     final cipher = bytes.sublist(16);
     final keyBytes = _normalizeKey(encryptionKey);
     final key = encrypt_pkg.Key(keyBytes);
-    final encrypter = encrypt_pkg.Encrypter(encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc));
+    final encrypter = encrypt_pkg.Encrypter(
+      encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc),
+    );
     final decrypted = encrypter.decrypt(encrypt_pkg.Encrypted(cipher), iv: iv);
     final map = jsonDecode(decrypted) as Map<String, dynamic>;
     // Support both legacy payloads (transaction only) and new wrapped payloads
@@ -317,7 +346,10 @@ class Source {
 
   /// Decode payload and return both TransactionInfo and merchant info (if present).
   /// Returns a map with keys: `transaction` (TransactionInfo) and `merchant` (Map).
-  Map<String, dynamic> decodePayloadWithMerchant(String payload, String encryptionKey) {
+  Map<String, dynamic> decodePayloadWithMerchant(
+    String payload,
+    String encryptionKey,
+  ) {
     String encoded = payload;
     final uriIndex = payload.indexOf('payload=');
     if (uriIndex >= 0) {
@@ -329,7 +361,9 @@ class Source {
     final cipher = bytes.sublist(16);
     final keyBytes = _normalizeKey(encryptionKey);
     final key = encrypt_pkg.Key(keyBytes);
-    final encrypter = encrypt_pkg.Encrypter(encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc));
+    final encrypter = encrypt_pkg.Encrypter(
+      encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc),
+    );
     final decrypted = encrypter.decrypt(encrypt_pkg.Encrypted(cipher), iv: iv);
     final map = jsonDecode(decrypted) as Map<String, dynamic>;
     if (map.containsKey('transaction')) {
@@ -352,12 +386,12 @@ class Source {
   ///
   /// Example:
   /// final result = Source.platformDecrypt(payload, encryptionKey);
-  static Map<String, dynamic> platformDecrypt(String payload, String encryptionKey) {
+  static Map<String, dynamic> platformDecrypt(
+    String payload,
+    String encryptionKey,
+  ) {
     return instance.decodePayloadWithMerchant(payload, encryptionKey);
   }
-
-
-
 
   /// Convenience helper to call Source pay API.
   /// Merchant/backend should perform real authenticated transfers; this is a simple client helper.
@@ -392,7 +426,10 @@ class Source {
 
     if (!launched) {
       try {
-        launched = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+        launched = await launchUrl(
+          appUri,
+          mode: LaunchMode.externalApplication,
+        );
       } catch (_) {
         launched = false;
       }
@@ -402,14 +439,18 @@ class Source {
 
     // App launch failed — try opening the web fallback.
     try {
-      final webLaunched = await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      final webLaunched = await launchUrl(
+        webUri,
+        mode: LaunchMode.externalApplication,
+      );
       if (webLaunched) return;
     } catch (_) {}
 
     // If we reach here nothing could be opened. Provide user feedback.
     try {
-      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Unable to open app or web URL')));
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Unable to open app or web URL')),
+      );
     } catch (_) {}
   }
-
 }

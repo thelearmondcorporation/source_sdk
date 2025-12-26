@@ -10,7 +10,13 @@ class SourceTestPage extends StatelessWidget {
     final tx = TransactionInfo(
       accountId: 'merchant_abc',
       lineItems: [
-        LineItem(id: 'li-1', name: 'Widget', quantity: 2, unitAmount: 999, currency: 'USD'),
+        LineItem(
+          id: 'li-1',
+          name: 'Widget',
+          quantity: 2,
+          unitAmount: 999,
+          currency: 'USD',
+        ),
       ],
       amount: 1999,
       currency: 'USD',
@@ -31,9 +37,17 @@ class SourceTestPage extends StatelessWidget {
             const Text('Scan this QR with the Source app'),
             const SizedBox(height: 12),
             // Embed the QR widget produced by the SDK (smaller size)
-            Center(child: Source.instance.present(transaction: tx, encryptionKey: testKey, qrSize: 148.334345)),
+            Center(
+              child: Source.instance.present(
+                transaction: tx,
+                encryptionKey: testKey,
+                qrSize: 148.334345,
+              ),
+            ),
             const SizedBox(height: 24),
-              const Text('Payload is hidden for security. Use Copy link to share.'),
+            const Text(
+              'Payload is hidden for security. Use Copy link to share.',
+            ),
             const SizedBox(height: 8),
             // Show the raw payload as a convenience for testing
           ],
