@@ -6,7 +6,7 @@ Add to your `pubspec.yaml` dependencies:
 
 ```yaml
 dependencies:
-  source_sdk: ^0.1.0
+  source_sdk: ^1.0.0
 ```
 
 Run:
