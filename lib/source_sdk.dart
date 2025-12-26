@@ -192,7 +192,18 @@ class Source {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          QrImageView(data: webUri, size: qrSize),
+          SizedBox(
+            width: qrSize,
+            height: qrSize,
+            child: CustomPaint(
+              size: Size(qrSize, qrSize),
+              painter: QrPainter(
+                data: webUri,
+                version: QrVersions.auto,
+                gapless: true,
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
           // Hide the raw payload by default. Provide a small action to copy the link instead.
           Builder(

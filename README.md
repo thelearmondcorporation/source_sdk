@@ -1,61 +1,88 @@
 Source SDK
 
-## Installation
+## Overview
+Source SDK provides a small, embeddable Flutter widget that generates an
+AES-256-CBC encrypted QR payload (IV + ciphertext, base64url encoded) which
+the Source platform can decrypt to process payments.
 
-Add to your `pubspec.yaml` dependencies:
+## Key Points
+- Widget-only SDK: it renders an encrypted QR and exposes decryption helpers.
+- Payload contains `transaction` and `merchant` objects; `transaction` may
+  include `lineItems`.
+- Encryption: AES-256-CBC with a 16-byte IV prepended; key is 32 bytes.
+
+## Getting Started
+
+### 1) Add the package
+
+Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  source_sdk: ^0.1.0
+  source_sdk: ^1.0.0
 ```
 
-Run:
+Then fetch dependencies:
 
 ```bash
 flutter pub get
 ```
 
-## Usage
-
-Import the package:
+### 2) Import and render the QR
 
 ```dart
 import 'package:source_sdk/source_sdk.dart';
-```
 
-Create a `TransactionInfo` and embed the QR widget:
-
-```dart
 final tx = TransactionInfo(
-  accountId: 'your_account_id',
+  accountId: 'acct_demo_123',
   lineItems: [
-    LineItem(id: 'li-1', name: 'Example item', quantity: 1, unitAmount: 1000, currency: 'USD'),
+    LineItem(
+      id: 'sku-1',
+      name: 'T-Shirt',
+      quantity: 1,
+      unitAmount: 1000,
+      currency: 'USD',
+    ),
   ],
-  amount: 1000, // smallest currency unit
+  amount: 1250,
   currency: 'USD',
-  reference: 'order_123',
+  reference: 'order_1234',
+);
+
+final sdkConfig = SourceSDKConfig(
+  accountId: tx.accountId,
+  merchantName: 'Demo Store',
 );
 
 Widget build(BuildContext context) {
-  return Source.instance.present(transaction: tx);
+  return Source.instance.present(
+    transaction: tx,
+    sdkConfig: sdkConfig,
+    // optional: pass `encryptionKey` to control encryption, otherwise
+    // the SDK will generate and persist a key securely for you.
+    // encryptionKey: '01234567890123456789012345678901',
+  );
 }
 ```
+ 
+### 3) Next steps (integration checklist)
 
-Optionally provide an `encryptionKey` (raw 32-char, 64-hex, or base64-encoded 32 bytes):
+Use this short checklist to finish integrating and testing the SDK in your app:
 
-```dart
-Source.instance.present(transaction: tx, encryptionKey: 'BASE64_OR_HEX_OR_32_CHAR_KEY');
-```
+- Add `Source.instance.present(...)` to a screen in your app and run the
+  example to verify the QR renders.
+- Scan the QR with a trusted scanner or the `example/` app to confirm the app integration opens correctly.
+- Verify `SourceSDKConfig` (set `accountId` / `merchantName`) and optionally
+- Run `flutter analyze` and `flutter test` in your project to validate
+  integration.
 
-To decrypt a payload on the platform or server, use the static helper:
 
-```dart
-final result = Source.platformDecrypt(payloadString, encryptionKey);
-final transaction = result['transaction'] as TransactionInfo;
-final merchant = result['merchant'] as Map<String, dynamic>;
-```
+## Notes
+- `SourceSDKConfig` can be used to set `accountId`, `merchantName`, and `merchantInfo`.
+- The example app in `example/` demonstrates full integration.
 
-## LICENSE
+## License
+
 MIT
 
 ## Author
