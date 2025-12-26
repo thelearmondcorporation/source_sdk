@@ -2,8 +2,7 @@ Source SDK
 
 ## Overview
 Source SDK provides a small, embeddable Flutter widget that generates an
-AES-256-CBC encrypted QR payload (IV + ciphertext, base64url encoded) which
-the Source platform can decrypt to process payments.
+AES-256-CBC encrypted QR payload (IV + ciphertext, base64url encoded) that communicates with the Source Api.
 
 ## Key Points
 - Widget-only SDK: it renders an encrypted QR and exposes decryption helpers.
