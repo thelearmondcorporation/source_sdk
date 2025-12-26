@@ -74,7 +74,7 @@ packages:
     source: hosted
     version: "3.0.7"
   cupertino_icons:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: cupertino_icons
       sha256: ba631d1c7f7bef6b729a622b7b752645a2d076dba9976925b8f25725a30e1ee6
@@ -82,7 +82,7 @@ packages:
     source: hosted
     version: "1.0.8"
   encrypt:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: encrypt
       sha256: "62d9aa4670cc2a8798bab89b39fc71b6dfbacf615de6cf5001fb39f7e4a996a2"
@@ -103,7 +103,7 @@ packages:
     source: sdk
     version: "0.0.0"
   flutter_secure_storage:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: flutter_secure_storage
       sha256: "22dbf16f23a4bcf9d35e51be1c84ad5bb6f627750565edd70dab70f3ff5fff8f"
@@ -161,7 +161,7 @@ packages:
     source: sdk
     version: "0.0.0"
   http:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: http
       sha256: "5895291c13fa8a3bd82e76d5627f69e0d85ca6a30dcac95c4ea19a5d555879c2"
@@ -208,14 +208,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
-  lints:
-    dependency: "direct dev"
-    description:
-      name: lints
-      sha256: a5e2b223cb7c9c8efdc663ef484fdd95bb243bff242ef5b13e26883547fce9a0
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.0.0"
   matcher:
     dependency: transitive
     description:
@@ -249,7 +241,7 @@ packages:
     source: hosted
     version: "1.9.1"
   paysheet:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: paysheet
       sha256: "33e81e0e3a61f0143ba7d58b8a2f5584a2d5cfd850e7e40c06654be8a43422bd"
@@ -281,7 +273,7 @@ packages:
     source: hosted
     version: "3.0.2"
   qr_flutter:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: qr_flutter
       sha256: "5095f0fc6e3f71d08adef8feccc8cea4f12eec18a2e31c2e8d82cb6019f4b097"
@@ -293,6 +285,13 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  source_sdk:
+    dependency: "direct main"
+    description:
+      path: ".."
+      relative: true
+    source: path
+    version: "1.0.0+1"
   source_span:
     dependency: transitive
     description:
@@ -350,7 +349,7 @@ packages:
     source: hosted
     version: "1.4.0"
   url_launcher:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: url_launcher
       sha256: f6a7e5c4835bb4e3026a04793a4199ca2d14c739ec378fdfe23fc8075d0439f8
@@ -439,4 +438,4 @@ packages:
     version: "1.1.1"
 sdks:
   dart: ">=3.10.3 <4.0.0"
-  flutter: ">=3.38.0 <4.0.0"
+  flutter: ">=3.38.0"

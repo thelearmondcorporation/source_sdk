@@ -8,8 +8,10 @@ class SourceTestPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tx = TransactionInfo(
-      merchantId: 'merchant_abc',
-      merchantWallet: 'wallet_merchant_abc',
+      accountId: 'merchant_abc',
+      lineItems: [
+        LineItem(id: 'li-1', name: 'Widget', quantity: 2, unitAmount: 999, currency: 'USD'),
+      ],
       amount: 1999,
       currency: 'USD',
       reference: 'order_test_001',

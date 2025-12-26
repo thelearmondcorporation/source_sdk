@@ -1,0 +1,36 @@
+# Files and folders to ignore when publishing to pub.dev
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Build outputs
+build/
+.dart_tool/
+
+# Generated files
+.packages
+pubspec.lock
+
+# Local dev files
+coverage/
+test_output/
+logs/
+
+# Example app (not published with package)
+example/
+
+# Native project files
+android/
+ios/
+macos/
+linux/
+windows/
+web/
+
+# Misc
+.DS_Store
+*.log
+
+TODO.md

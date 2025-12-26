@@ -1,30 +1,63 @@
-# source_sdk
+Source SDK
 
-A new Flutter project.
+## Installation
 
-## Getting Started
+Add to your `pubspec.yaml` dependencies:
 
-This project is a starting point for a Flutter application.
+```yaml
+dependencies:
+  source_sdk: ^0.1.0
+```
 
-A few resources to get you started if this is your first Flutter project:
+Run:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+flutter pub get
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Usage
 
-## Universal Links / App Links setup
+Import the package:
 
-To enable automatic opening of the Source app when a user scans the QR, set up Universal Links (iOS) and App Links (Android):
+```dart
+import 'package:source_sdk/source_sdk.dart';
+```
 
-- Android
-	1. Add the intent filter (already added) to `android/app/src/main/AndroidManifest.xml` to handle `https://www.thelearmondcorporation.com/source/pay`.
-	2. Host `assetlinks.json` at `https://www.thelearmondcorporation.com/.well-known/assetlinks.json`. A sample is included at `web/associations/assetlinks.json` — replace `package_name` and `sha256_cert_fingerprints` with your app's values.
+Create a `TransactionInfo` and embed the QR widget:
 
-- iOS
-	1. Add the Associated Domains entitlement `applinks:www.thelearmondcorporation.com`. A sample entitlement file is included at `ios/Runner/Runner.entitlements`.
-	2. Host `apple-app-site-association` at `https://www.thelearmondcorporation.com/.well-known/apple-app-site-association` or at the site root. A sample is included at `web/associations/apple-app-site-association` — replace `TEAM_ID` and bundle id accordingly.
+```dart
+final tx = TransactionInfo(
+  accountId: 'your_account_id',
+  lineItems: [
+    LineItem(id: 'li-1', name: 'Example item', quantity: 1, unitAmount: 1000, currency: 'USD'),
+  ],
+  amount: 1000, // smallest currency unit
+  currency: 'USD',
+  reference: 'order_123',
+);
 
-After hosting these files and updating your app's build with the correct package/bundle IDs and signing fingerprints, tapping the QR's web URL will open the app directly if installed.
+Widget build(BuildContext context) {
+  return Source.instance.present(transaction: tx);
+}
+```
+
+Optionally provide an `encryptionKey` (raw 32-char, 64-hex, or base64-encoded 32 bytes):
+
+```dart
+Source.instance.present(transaction: tx, encryptionKey: 'BASE64_OR_HEX_OR_32_CHAR_KEY');
+```
+
+To decrypt a payload on the platform or server, use the static helper:
+
+```dart
+final result = Source.platformDecrypt(payloadString, encryptionKey);
+final transaction = result['transaction'] as TransactionInfo;
+final merchant = result['merchant'] as Map<String, dynamic>;
+```
+
+## LICENSE
+MIT
+
+## Author
+
+The Learmond Corporation

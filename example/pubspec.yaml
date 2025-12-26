@@ -1,0 +1,21 @@
+name: source_sdk_example
+description: Example app demonstrating Source SDK usage
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  source_sdk:
+    path: ..
+  # encrypt removed; the SDK performs encryption internally
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

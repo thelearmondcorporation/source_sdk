@@ -1,24 +1,82 @@
 import 'dart:convert';
+import 'dart:math';
+import 'src/api_base.dart';
+export 'src/source_sdk_config.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:encrypt/encrypt.dart' as encrypt_pkg;
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'src/source_sdk_config.dart';
+
+/// Source SDK
+///
+/// Overview:
+/// - Generates AES-256-CBC encrypted payloads containing `transaction` and
+///   `merchant` objects. Payload bytes are IV (16) + ciphertext and encoded
+///   using base64url for transport inside the QR.
+/// - `Source.instance.present(...)` returns an embeddable `Widget` that renders
+///   a QR encoding the AES-encrypted payload (the `merchant` + `transaction`).
+///   For convenience the encrypted payload is placed inside a web URL wrapper
+///   so users without the Source app can open the page on the web; tapping
+///   the provided action attempts the app-scheme URI first and otherwise opens
+///   the web URL.
+/// - You can provide an `encryptionKey`, or the SDK will generate a secure
+///   32-byte key and persist it.
 
 /// Simple transaction model used in payloads.
+/// Line item model describing individual purchasable items.
+class LineItem {
+  final String id;
+  final String name;
+  final int quantity;
+  final int unitAmount; // in smallest currency unit
+  final String? currency;
+  final Map<String, dynamic>? metadata;
+
+  LineItem({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.unitAmount,
+    this.currency,
+    this.metadata,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'quantity': quantity,
+        'unitAmount': unitAmount,
+        if (currency != null) 'currency': currency,
+        'metadata': metadata ?? {},
+      };
+
+  static LineItem fromJson(Map<String, dynamic> j) => LineItem(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        quantity: j['quantity'] as int,
+        unitAmount: j['unitAmount'] as int,
+        currency: j['currency'] as String?,
+        metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
+      );
+}
+
 class TransactionInfo {
-  final String merchantId;
-  final String merchantWallet;
+  final String accountId;
+  final String? merchantWallet;
+  final List<LineItem>? lineItems;
   final int amount; // in smallest currency unit (e.g., cents)
   final String currency;
   final String reference;
   final Map<String, dynamic>? metadata;
 
   TransactionInfo({
-    required this.merchantId,
-    required this.merchantWallet,
+    required this.accountId,
+    this.merchantWallet,
+    this.lineItems,
     required this.amount,
     required this.currency,
     required this.reference,
@@ -26,20 +84,22 @@ class TransactionInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        'merchantId': merchantId,
-        'merchantWallet': merchantWallet,
+        'accountId': accountId,
+        if (merchantWallet != null) 'merchantWallet': merchantWallet,
+        if (lineItems != null) 'lineItems': lineItems!.map((e) => e.toJson()).toList(),
         'amount': amount,
         'currency': currency,
         'reference': reference,
         'metadata': metadata ?? {},
       };
 
-  static TransactionInfo fromJson(Map<String, dynamic> j) => TransactionInfo(
-        merchantId: j['merchantId'] as String,
-        merchantWallet: j['merchantWallet'] as String,
+    static TransactionInfo fromJson(Map<String, dynamic> j) => TransactionInfo(
+      accountId: j['accountId'] as String,
+        merchantWallet: j['merchantWallet'] as String?,
+        lineItems: (j['lineItems'] as List?)?.map((e) => LineItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
         amount: j['amount'] as int,
         currency: j['currency'] as String,
-        reference: j['reference'] as String,
+      reference: j['reference'] as String,
         metadata: Map<String, dynamic>.from(j['metadata'] ?? {}),
       );
 }
@@ -49,85 +109,124 @@ class Source {
   Source._private();
   static final Source instance = Source._private();
 
-  /// Presents a modal containing a 256-bit encrypted QR code for the given transaction.
-  ///
-  /// [encryptionKey] must be a 32-byte key supplied as either a raw 32-char string,
-  /// a 64-char hex string, or a base64 key. This method will assert if the key cannot
-  /// be parsed to 32 bytes.
-  /// Returns a widget that renders the encrypted QR for embedding on a merchant page.
-  ///
-  /// Use `Source.instance.present(transaction: tx, encryptionKey: key)` directly in
-  /// your widget tree to show the QR; it will not open a modal.
+  // Secure storage instance for storing per-merchant encryption keys.
+  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+
+  // Configuration is stored in `SourceSDKConfig.current`.
+
+  /// Return a widget that renders a QR containing the encrypted payload.
+  /// If `encryptionKey` is null the SDK will generate and persist a 32-byte key.
   Widget present({
     required TransactionInfo transaction,
-    required String encryptionKey,
+    String? encryptionKey,
+    /// Optional SDK config: if provided, the SDK will be configured with these
+    /// values before rendering the QR. This lets merchants call `present()`
+    /// once to both configure the SDK and render the QR.
+    SourceSDKConfig? sdkConfig,
     /// App custom scheme prefix (used when attempting to open the app directly)
     String appSchemePrefix = 'source://pay?payload=',
-    /// Fallback web URL base (used as the QR content so scanners open the web page if the app is not installed)
-    String fallbackWebBase = 'https://www.thelearmondcorporation.com/source/app/pay?payload=',
+    /// Optional web base URL (used as the QR content so scanners open the web page if the app is not installed)
+    /// If omitted the SDK will choose a sensible default depending on platform
+    /// and environment (dev vs production). Use `SourceSDKConfig.webBaseUrl`
+    /// to override globally.
+    String? webBase,
     double qrSize = 220,
   }) {
-    final payload = jsonEncode(transaction.toJson());
-    final encrypted = _encryptPayload(payload, encryptionKey);
-    final encoded = base64UrlEncode(encrypted);
+    // Apply provided SDK config (optional).
+    if (sdkConfig != null) SourceSDKConfig.configure(sdkConfig);
 
-    // The QR contains the fallback web URL — scanning devices without app will open the web page.
-    final webUri = '$fallbackWebBase$encoded';
-    // The app URI uses the custom scheme — we'll try to open this first when user taps button
-    final appUri = '$appSchemePrefix$encoded';
+    Widget buildWithKey(String key) {
+      // If the merchant configured an account id via `SourceSDKConfig.configure`, prefer
+      // that account id for the payload. This ensures merchants only need to
+      // provide their Source `accountId` once.
+      final cfg = SourceSDKConfig.current;
+      final txForPayload = cfg == null
+          ? transaction
+          : TransactionInfo(
+              accountId: cfg.accountId,
+              merchantWallet: cfg.merchantWallet ?? transaction.merchantWallet,
+              amount: transaction.amount,
+              currency: transaction.currency,
+              reference: transaction.reference,
+              metadata: transaction.metadata,
+            );
+      final resolvedMerchantWallet = cfg?.merchantWallet ?? txForPayload.merchantWallet;
+      final merchantInfo = {
+        'accountId': cfg?.accountId ?? txForPayload.accountId,
+        if (resolvedMerchantWallet != null) 'merchantWallet': resolvedMerchantWallet,
+        'merchantName': cfg?.merchantName,
+      };
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        QrImageView(
-          data: webUri,
-          size: qrSize,
-        ),
-        const SizedBox(height: 12),
-        // Hide the raw payload by default. Provide a small action to copy the link instead.
-        Builder(builder: (ctx) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextButton.icon(
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(ctx);
-                        await Clipboard.setData(ClipboardData(text: webUri));
-                        messenger.showSnackBar(const SnackBar(content: Text('Link copied')));
-                      },
-                icon: const Icon(Icons.copy),
-                label: const Text('Copy link'),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
+      final payloadMap = {
+        'transaction': txForPayload.toJson(),
+        'merchant': merchantInfo,
+      };
+
+          final payload = jsonEncode(payloadMap);
+          final encrypted = _encryptPayload(payload, key);
+          final encoded = base64UrlEncode(encrypted);
+          final encodedParam = Uri.encodeComponent(encoded);
+
+          // Resolve web base: precedence is parameter -> SDK config -> auto default
+          final resolvedBase = webBase ?? SourceSDKConfig.current?.webBaseUrl ?? resolveDefaultWebBase();
+
+          // Build web URL: append the payload as a proper query parameter.
+          final webUri = resolvedBase.contains('?') ? '$resolvedBase&payload=$encodedParam' : '$resolvedBase?payload=$encodedParam';
+
+          // The app URI uses the custom scheme — encode the payload component.
+          final appUri = '$appSchemePrefix${Uri.encodeComponent(encoded)}';
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          QrImageView(
+            data: webUri,
+            size: qrSize,
+          ),
+          const SizedBox(height: 12),
+          // Hide the raw payload by default. Provide a small action to copy the link instead.
+          Builder(builder: (ctx) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton.icon(
                   onPressed: () async {
-                    if (kIsWeb) {
-                      final messenger = ScaffoldMessenger.of(ctx);
-                      final navigator = Navigator.of(ctx);
-                      // ignore: use_build_context_synchronously
-                      final token = await Source.instance.showLoginBottomSheet(navigator.context);
-                      if (token == null) return;
-                      try {
-                        final decoded = Source.instance.decodePayload('payload=$encoded', encryptionKey);
-                        await Source.instance.showPaysheetBottomSheet(navigator.context, decoded, (tx) async {
-                          final res = await Source.instance.payWithApi(
-                              endpoint: Uri.parse('https://www.thelearmondcorporation.com/source/app/pay'),
-                              bearerToken: token,
-                              tx: tx);
-                          return res.statusCode == 200;
-                        });
-                      } catch (e) {
-                        messenger.showSnackBar(SnackBar(content: Text('Invalid payload: $e')));
-                      }
-                    } else {
-                      await _openAppOrWeb(Uri.parse(appUri), Uri.parse(webUri));
-                    }
+                    final messenger = ScaffoldMessenger.of(ctx);
+                    await Clipboard.setData(ClipboardData(text: webUri));
+                    messenger.showSnackBar(const SnackBar(content: Text('Link copied')));
                   },
-                  child: const Text('Open in Source app')),
-            ],
-          );
-        }),
-      ],
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copy link'),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                    onPressed: () async {
+                      await _openAppOrWeb(Uri.parse(appUri), Uri.parse(webUri), ctx);
+                    },
+                    child: const Text('Open in Source app')),
+              ],
+            );
+          }),
+        ],
+      );
+    }
+
+    // If caller provided a key, render immediately. Otherwise fetch/create one and render when ready.
+    if (encryptionKey != null) {
+      return buildWithKey(encryptionKey);
+    }
+
+    return FutureBuilder<String>(
+      future: _getOrCreateEncryptionKey(),
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox(width: 220, height: 220, child: Center(child: CircularProgressIndicator()));
+        }
+        if (snap.hasError || snap.data == null) {
+          return const Text('Failed to obtain encryption key');
+        }
+        return buildWithKey(snap.data!);
+      },
     );
   }
 
@@ -169,6 +268,28 @@ class Source {
     return Uint8List.fromList(out);
   }
 
+  // Generate a cryptographically secure 32-byte key.
+  Uint8List _generateKeyBytes() {
+    final rnd = Random.secure();
+    return Uint8List.fromList(List<int>.generate(32, (_) => rnd.nextInt(256)));
+  }
+
+  String _bytesToBase64(Uint8List b) => base64UrlEncode(b);
+
+  // Default web base resolution moved to `lib/src/api_base.dart`.
+
+  // Read the stored encryption key (base64) or generate and persist one.
+  Future<String> _getOrCreateEncryptionKey() async {
+    const storageKey = 'source_encryption_key';
+    final existing = await _secureStorage.read(key: storageKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final keyBytes = _generateKeyBytes();
+    final encoded = _bytesToBase64(keyBytes);
+    await _secureStorage.write(key: storageKey, value: encoded);
+    return encoded;
+  }
+
   /// Decode payload produced by `present` and return TransactionInfo.
   /// [payload] may be the full uri like "source://pay?payload=..." or raw base64url string.
   TransactionInfo decodePayload(String payload, String encryptionKey) {
@@ -186,71 +307,57 @@ class Source {
     final encrypter = encrypt_pkg.Encrypter(encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc));
     final decrypted = encrypter.decrypt(encrypt_pkg.Encrypted(cipher), iv: iv);
     final map = jsonDecode(decrypted) as Map<String, dynamic>;
+    // Support both legacy payloads (transaction only) and new wrapped payloads
+    if (map.containsKey('transaction')) {
+      final txMap = Map<String, dynamic>.from(map['transaction'] as Map);
+      return TransactionInfo.fromJson(txMap);
+    }
     return TransactionInfo.fromJson(map);
   }
 
-  /// Present a simple paysheet for Source-app style integration.
-  /// This is intended for the Source app: it decodes the payload, shows the transaction
-  /// and calls [onPay] when the user confirms. [onPay] should perform the actual
-  /// server-side payment call and return true on success.
-  /// Present a simple paysheet for Source-app style integration.
-  /// This is intended for the Source app: it decodes the payload, shows the transaction
-  /// and calls [onPay] when the user confirms. [onPay] should perform the actual
-  /// server-side payment call and return true on success.
-  ///
-  /// If [paysheetLauncher] is provided it will be used to present the paysheet UI
-  /// (for example, using the `paysheet` package). If not provided the SDK falls
-  /// back to a simple built-in dialog.
-  Future<void> presentPaysheetFromPayload(BuildContext context,
-      {required String payload,
-      required String encryptionKey,
-      required Future<bool> Function(TransactionInfo tx) onPay,
-      Future<bool> Function(BuildContext context, TransactionInfo tx)? paysheetLauncher}) async {
-    final tx = decodePayload(payload, encryptionKey);
-
-    if (paysheetLauncher != null) {
-      // If the host app provided a paysheet launcher (likely using the `paysheet` package), use it.
-      await paysheetLauncher(context, tx);
-      return;
+  /// Decode payload and return both TransactionInfo and merchant info (if present).
+  /// Returns a map with keys: `transaction` (TransactionInfo) and `merchant` (Map).
+  Map<String, dynamic> decodePayloadWithMerchant(String payload, String encryptionKey) {
+    String encoded = payload;
+    final uriIndex = payload.indexOf('payload=');
+    if (uriIndex >= 0) {
+      encoded = payload.substring(uriIndex + 'payload='.length);
     }
-
-    // Fallback: simple dialog
-    await showDialog(
-        context: context,
-        builder: (ctx) {
-          var loading = false;
-          return StatefulBuilder(builder: (c, setState) {
-            return AlertDialog(
-              title: const Text('Confirm Payment'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Merchant: ${tx.merchantId}'),
-                  Text('Amount: ${tx.amount} ${tx.currency}'),
-                  Text('Reference: ${tx.reference}'),
-                ],
-              ),
-              actions: [
-                TextButton(
-                    onPressed: loading ? null : () => Navigator.of(ctx).pop(),
-                    child: const Text('Cancel')),
-                ElevatedButton(
-                  onPressed: loading
-                    ? null
-                    : () async {
-                      final navigator = Navigator.of(ctx);
-                      setState(() => loading = true);
-                      final ok = await onPay(tx);
-                      setState(() => loading = false);
-                      if (ok && navigator.mounted) navigator.pop();
-                      },
-                  child: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Pay')),
-              ],
-            );
-          });
-        });
+    final bytes = base64Url.decode(encoded);
+    if (bytes.length < 17) throw ArgumentError('invalid payload');
+    final iv = encrypt_pkg.IV(bytes.sublist(0, 16));
+    final cipher = bytes.sublist(16);
+    final keyBytes = _normalizeKey(encryptionKey);
+    final key = encrypt_pkg.Key(keyBytes);
+    final encrypter = encrypt_pkg.Encrypter(encrypt_pkg.AES(key, mode: encrypt_pkg.AESMode.cbc));
+    final decrypted = encrypter.decrypt(encrypt_pkg.Encrypted(cipher), iv: iv);
+    final map = jsonDecode(decrypted) as Map<String, dynamic>;
+    if (map.containsKey('transaction')) {
+      final txMap = Map<String, dynamic>.from(map['transaction'] as Map);
+      final merchantMap = Map<String, dynamic>.from(map['merchant'] ?? {});
+      return {
+        'transaction': TransactionInfo.fromJson(txMap),
+        'merchant': merchantMap,
+      };
+    }
+    return {
+      'transaction': TransactionInfo.fromJson(map),
+      'merchant': <String, dynamic>{},
+    };
   }
+
+  /// Platform-facing API: decrypt a payload and return a Map with keys
+  /// `transaction` and `merchant`. This is a simple entry point the Source
+  /// platform can call directly without needing to reimplement decryption.
+  ///
+  /// Example:
+  /// final result = Source.platformDecrypt(payload, encryptionKey);
+  static Map<String, dynamic> platformDecrypt(String payload, String encryptionKey) {
+    return instance.decodePayloadWithMerchant(payload, encryptionKey);
+  }
+
+
+
 
   /// Convenience helper to call Source pay API.
   /// Merchant/backend should perform real authenticated transfers; this is a simple client helper.
@@ -271,198 +378,38 @@ class Source {
   }
 
   /// Helper to attempt opening the Source app using the payload URI if the device has a handler.
-  Future<void> _openAppOrWeb(Uri appUri, Uri webUri) async {
-    // Try to open the app custom scheme first
+  Future<void> _openAppOrWeb(Uri appUri, Uri webUri, BuildContext ctx) async {
+    // Try launching the app URI using the platform default; some platforms
+    // behave better with `platformDefault` while others need
+    // `externalApplication`. Test both and fall back to the web URL.
+    bool launched = false;
+
     try {
-      if (await canLaunchUrl(appUri)) {
-        await launchUrl(appUri, mode: LaunchMode.externalApplication);
-        return;
+      launched = await launchUrl(appUri, mode: LaunchMode.platformDefault);
+    } catch (_) {
+      launched = false;
+    }
+
+    if (!launched) {
+      try {
+        launched = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        launched = false;
       }
+    }
+
+    if (launched) return;
+
+    // App launch failed — try opening the web fallback.
+    try {
+      final webLaunched = await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      if (webLaunched) return;
     } catch (_) {}
 
-    // Otherwise open the web fallback (this page can deep link into the app or show instructions)
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-    }
+    // If we reach here nothing could be opened. Provide user feedback.
+    try {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Unable to open app or web URL')));
+    } catch (_) {}
   }
 
-  /// Show a simple login bottom sheet (web fallback). Returns a session token (mock) or null.
-  Future<String?> showLoginBottomSheet(BuildContext context) async {
-    final emailCtl = TextEditingController();
-    final passCtl = TextEditingController();
-    return await showModalBottomSheet<String?>(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Sign in to Source', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  TextField(controller: emailCtl, decoration: const InputDecoration(labelText: 'Email')),
-                  const SizedBox(height: 8),
-                  TextField(controller: passCtl, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                      onPressed: () {
-                        // In a real app, call your auth endpoint here. Return a session token.
-                        Navigator.of(ctx).pop('demo_session_token');
-                      },
-                      child: const Text('Sign in')),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          );
-        });
-  }
-
-  /// Show an internal paysheet as a bottom sheet. Calls [onPay] to perform the payment.
-  Future<void> showPaysheetBottomSheet(BuildContext context, TransactionInfo tx, Future<bool> Function(TransactionInfo) onPay) async {
-    await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) {
-          var loading = false;
-          return StatefulBuilder(builder: (c, setState) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Pay ${tx.amount} ${tx.currency}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text('Merchant: ${tx.merchantId}'),
-                    Text('Reference: ${tx.reference}'),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: loading
-                              ? null
-                              : () async {
-                                  final navigator = Navigator.of(ctx);
-                                  setState(() => loading = true);
-                                  final ok = await onPay(tx);
-                                  setState(() => loading = false);
-                                  if (ok && navigator.mounted) navigator.pop();
-                                },
-                          child: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Pay')),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          });
-        });
-  }
-}
-
-/// Web landing page widget for the QR web fallback.
-/// Put this in `source_sdk.dart` so the SDK exposes the web landing flow.
-class WebLandingPage extends StatefulWidget {
-  final String encryptionKey;
-
-  const WebLandingPage({super.key, required this.encryptionKey});
-
-  @override
-  State<WebLandingPage> createState() => _WebLandingPageState();
-}
-
-class _WebLandingPageState extends State<WebLandingPage> {
-  String? payloadEncoded;
-  bool loggedIn = false;
-  @override
-  void initState() {
-    super.initState();
-    // Read payload from URL query param 'payload' (web)
-    final q = Uri.base.queryParameters['payload'];
-    payloadEncoded = q;
-    // If payload exists, automatically prompt login and paysheet after first frame.
-    if (payloadEncoded != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final navigator = Navigator.of(context);
-        final messenger = ScaffoldMessenger.of(context);
-        // ignore: use_build_context_synchronously
-        final token = await Source.instance.showLoginBottomSheet(navigator.context);
-        if (token == null) return;
-        if (!mounted) return;
-        try {
-          final decoded = Source.instance.decodePayload('payload=$payloadEncoded', widget.encryptionKey);
-          await Source.instance.showPaysheetBottomSheet(navigator.context, decoded, (tx) async {
-            final res = await Source.instance.payWithApi(
-              endpoint: Uri.parse('https://www.thelearmondcorporation.com/source/app/pay'),
-              bearerToken: token,
-              tx: tx,
-            );
-            return res.statusCode == 200;
-          });
-        } catch (e) {
-          messenger.showSnackBar(SnackBar(content: Text('Invalid payload: $e')));
-        }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Source — Pay')), 
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Welcome to Source', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (payloadEncoded == null) const Text('No payment payload found.'),
-            if (payloadEncoded != null) ...[
-              const Text('A payment is ready. Sign in to continue.'),
-              const SizedBox(height: 12),
-                ElevatedButton(
-                onPressed: () async {
-                  final navigator = Navigator.of(context);
-                  final messenger = ScaffoldMessenger.of(context);
-                  // show login
-                  // ignore: use_build_context_synchronously
-                  final token = await Source.instance.showLoginBottomSheet(navigator.context);
-                  if (token != null) {
-                    if (!mounted) return;
-                    setState(() => loggedIn = true);
-                    // decode payload and present paysheet bottom sheet
-                    try {
-                      final decoded = Source.instance.decodePayload('payload=$payloadEncoded', widget.encryptionKey);
-                      await Source.instance.showPaysheetBottomSheet(navigator.context, decoded, (tx) async {
-                        // call pay API — placeholder endpoint, replace with real backend
-                        final res = await Source.instance.payWithApi(
-                            endpoint: Uri.parse('https://api.thelearmondcorporation.com/pay'),
-                            bearerToken: token,
-                            tx: tx,
-                        );
-                        return res.statusCode == 200;
-                      });
-                    } catch (e) {
-                      messenger.showSnackBar(SnackBar(content: Text('Invalid payload: $e')));
-                    }
-                  }
-                },
-                child: const Text('Sign in and Pay'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }
