@@ -8,6 +8,8 @@
 //
 // Note: keep this top-level comment short — more detailed API docs belong on
 // the individual public symbols below.
+library source_sdk;
+
 import 'dart:convert';
 import 'dart:math';
 import 'src/api_base.dart';
