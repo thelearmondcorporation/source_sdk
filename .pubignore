@@ -18,8 +18,8 @@ coverage/
 test_output/
 logs/
 
-# Example app (not published with package)
-example/
+# Example app (include in published package)
+# example/  <-- previously excluded; removed so pub.dev detects the example
 
 # Native project files
 android/

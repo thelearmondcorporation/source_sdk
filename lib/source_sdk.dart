@@ -1,3 +1,13 @@
+/// Source SDK library
+///
+/// This file contains the public SDK surface for the Source package. The SDK
+/// exposes an embeddable Flutter widget that renders an AES-256-CBC encrypted
+/// QR payload (IV + ciphertext, base64url encoded) and helper APIs for key
+/// management and (platform) decryption. The public API surface is documented
+/// inline on exported types and members.
+//
+// Note: keep this top-level comment short — more detailed API docs belong on
+// the individual public symbols below.
 import 'dart:convert';
 import 'dart:math';
 import 'src/api_base.dart';

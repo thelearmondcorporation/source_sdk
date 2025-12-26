@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:source_sdk/source_sdk.dart';
 
+/// Example entrypoint for the Source SDK example app.
+///
+/// This `main` boots a minimal Flutter app that demonstrates embedding the
+/// `Source.instance.present(...)` QR widget. It's intended for local testing
+/// and examples only.
 void main() {
   runApp(const ExampleApp());
 }
 
+/// Minimal app wrapper used by the example.
+///
+/// Presents the `ExamplePage` which hosts the SDK QR widget.
 class ExampleApp extends StatelessWidget {
   const ExampleApp({super.key});
 
@@ -14,6 +22,7 @@ class ExampleApp extends StatelessWidget {
   }
 }
 
+/// Page demonstrating how to embed the `Source` QR widget.
 class ExamplePage extends StatefulWidget {
   const ExamplePage({super.key});
 

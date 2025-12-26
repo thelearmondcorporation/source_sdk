@@ -81,6 +81,7 @@ Use this short checklist to finish integrating and testing the SDK in your app:
 - `SourceSDKConfig` can be used to set `accountId`, `merchantName`, and `merchantInfo`.
 - The example app in `example/` demonstrates full integration.
 
+
 ## License
 
 MIT
